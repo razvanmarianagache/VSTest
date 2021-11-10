@@ -1,77 +1,51 @@
 
 import 'core-js/modules/es.typed-array.uint8-array';
-import 'core-js/modules/es.typed-array.uint32-array';
 
 const boxRoots = ['moof', 'traf'];
 
-let boxesFound = [];
+const displayableContent = {
+    name: 'mdat',
+    index: '',
+    len: ''
+}
 
+/** Call this once to start the entire loading & parsing process
+ * 
+ * @param {*} pFile - url to the actual file that needs to be loaded
+ */
 const CastlabsTest = (pFile) => {
-
-    fetch(pFile).then(response => response.arrayBuffer())
+    fetch(pFile)
+        .then(response => response.arrayBuffer())
         .then(data => {
             processData(data);
-
-            const tArray = new Uint8Array(data);
-            const totalLength = tArray.byteLength;
-            let currentChunkLength = 0;
-            let currentChunkName = '';
-
-                        for (let idx = 0; idx < totalLength; idx++) {
-            //                 currentChunkLength = getChunkLength(tArray, idx, idx + 3);
-            //                 idx += 4;
-            //                 currentChunkName = getChunkName(tArray, idx, idx + 3);
-            //                 if(boxRoots.includes(currentChunkName)){
-            //                     console.log(' ---> RZV   yes'   );
-
-
-            //                 }
-            // console.log(' ---> RZV   ', idx   );
-            // console.log(' ---> RZV   ', currentChunkName   );
-                            console.log(' ---> RZV   ', idx, " - ", tArray[idx], " - ", String.fromCharCode(tArray[idx]));
-                            if (idx >= 30) {
-                                break;
-                            }
-
-                        }
-
-            //             // const sampleArray = new Uint8Array([0, 0, 0, 10110101]);
-
-            //             //  console.log(' ---> RZV  >> ', sampleArray);
-            //             //  let output = (sampleArray[0] << 24) | (sampleArray[1] << 16) | (sampleArray[2] << 8) | sampleArray[3]
-            //             //  console.log(' ---> RZV sample output --> ', output);
-
-            //  console.log(' ---> RZV   ---'   );
-            //  console.log(' ---> RZV   ---'   );
-            //  console.log(' ---> RZV   ---'   );
-            //             // getChunkLength(tArray, 0, 3);
-            //             // getChunkName(tArray, 4, 7);
-
-            //             // getChunkLength(tArray, 8, 11);
-            //             // getChunkName(tArray, 12, 15);
-
-            //             // getChunkName(tArray, 21, 25);
         })
 }
 
 const processData = (pData) => {
+    var startTime = performance.now();
+
     const tArray = new Uint8Array(pData);
-    const totalLength = tArray.byteLength;
-    processBox(tArray, 0);
+  
+    processBox(tArray);
 
-    console.log(' ---> RZV   boxesFound: ', boxesFound   );
-    // for (let idx = 0; idx < totalLength; idx++) {
+    var endTime = performance.now();
 
-    //     processBox(tArray, idx);
+    renderImages(tArray, displayableContent);
 
-    //     if (idx >= 50) {
-    //         break;
-    //     }
-    // }
-
+    console.log(' ---> ');
+    console.log(` ---> Parsing process time: ' ${endTime - startTime}ms   `);
+    console.log(' ---> ... might be faster if we drop console log');
 }
 
-const processBox = (pArray, pStart) => {
+/**
+ * Will parse the entire byte array from one 'box' to the other 
+ * Jumps over the content of boxes
+ * Considers that a box only has other boxes and no content by checking the chunk name with boxRoots
+ * @param {*} pArray 
+ * @param {*} pStart 
+ * @returns 
+ */
+const processBox = (pArray, pStart = 0) => {
     let currentChunkLength, currentChunkName;
     let idx = pStart;
 
@@ -79,23 +53,33 @@ const processBox = (pArray, pStart) => {
     idx += 4;
     currentChunkName = getChunkName(pArray, idx, idx + 3);
 
-    console.log(' ---> RZV  currentChunkName ', currentChunkName);
-    console.log(' ---> RZV currentChunkLength  ', currentChunkLength);
-    
+    console.log(`Found box of type ${currentChunkName} and size ${currentChunkLength}  --- box present from bytes: ${pStart} - ${pStart + currentChunkLength}`);
+
+    if(currentChunkName === displayableContent.name){ 
+        displayableContent.index = pStart;
+        displayableContent.len = currentChunkLength;
+    }
 
     if (boxRoots.includes(currentChunkName)) {
         idx += 4;
         processBox(pArray, idx);
-    }else{
+    } else {
         idx += currentChunkLength - 4;
-        if(idx === pArray.byteLength){
+        if (idx >= pArray.byteLength) {        // === not safe enough
             return;
         }
-       
         processBox(pArray, idx);
     }
 }
 
+/**
+ * Will only read 4 bytes from pStart to pEnd
+ * Will summ them up together and return the value
+ * @param {*} pArray 
+ * @param {*} pStart 
+ * @param {*} pEnd 
+ * @returns only the chunk length as number
+ */
 const getChunkLength = (pArray, pStart, pEnd) => {
     let chunkLength = 0;
     let iterator = 1;
@@ -106,17 +90,59 @@ const getChunkLength = (pArray, pStart, pEnd) => {
     return chunkLength;
 }
 
+/**
+ * Will only read 4 bytes from pStart to pEnd
+ * Will summ them up together to a string and return the value
+ * @param {*} pArray 
+ * @param {*} pStart 
+ * @param {*} pEnd 
+ * @returns only the chunk name as string
+ */
 const getChunkName = (pArray, pStart, pEnd) => {
     let chunkName = '';
     for (let idx = pStart; idx <= pEnd; idx++) {
-        console.log(' ---> RZV   ', pArray[idx]   );
         chunkName += String.fromCharCode(pArray[idx])
     }
     return chunkName;
 }
 
+/**
+ * Used only to parse the data and render the images.
+ * uses pMdatData to start reading from the byte stream
+ * This will first create a new array from the original byte stream that will hold ONLY the actual content data
+ * Then it will convert it to xml and iterate to get to the images base64 data
+ */
+const renderImages = (pArray, pMdatData) => {
+    const {index, len} = pMdatData;
+
+    const mdatContentStart = index + 8;
+    const newArray = pArray.subarray(mdatContentStart, mdatContentStart + len)
+    console.log(`Content of mdat box is: ${Buffer.from(newArray).toString()}`   );
+
+    const decoder = new TextDecoder('utf8');
+    const mdatXML = new window.DOMParser().parseFromString(decoder.decode(newArray), "text/xml")
+    
+    const listHolderEl = document.getElementById('list-holder');
+    
+    for(let node of mdatXML.firstChild.childNodes){
+        if(node.nodeName === 'head'){
+            for(let headNode of node.childNodes){
+                if(headNode.nodeName === 'metadata'){
+                    for(let metaNode of headNode.childNodes){
+                        if(metaNode.nodeName === 'smpte:image'){
+                            let newLiElement = document.createElement('li');
+                            let newImage = document.createElement('img');
+                            newImage.src = "data:image/png;base64," + metaNode.firstChild.nodeValue;
+                            newLiElement.appendChild(newImage);
+                            listHolderEl.appendChild(newLiElement);
+                        }
+                    }
+                    return;
+                }
+            }
+            return;
+        }
+    }
+}
+
 export default CastlabsTest;
-
-
-       // console.log(' ---> RZV   ', iterator, " ", 32 - 8 * iterator   );
-      //  console.log(' ---> RZV   ',pArray[idx].toString(2), " - ", pArray[idx].toString(2) << 32 - 8 * iterator    );
