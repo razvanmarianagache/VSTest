@@ -1,12 +1,5 @@
-console.log(' ---> RZV   '    );
+import CastlabsTest from "./test/TestMain";
 
-const bla = { a: 1};
-
-console.log(' ---> RZV   ', bla?.a   );
-
-const app = () =>{
-
-    console.log(' ---> RZV   yo'   );
+window.onload = () =>{
+  CastlabsTest('http://demo.castlabs.com/tmp/text0.mp4');
 }
-
-app()
