@@ -1,4 +1,9 @@
 
+/**
+ * This will work in Edge, Chrome & Firefox
+ */
+
+
 import 'core-js/modules/es.typed-array.uint8-array';
 
 const boxRoots = ['moof', 'traf'];
